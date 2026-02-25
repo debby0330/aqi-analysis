@@ -142,7 +142,6 @@ Thumbs.db
 # Project specific
 data/raw/
 data/processed/
-outputs/
 logs/
 *.pkl
 *.joblib
