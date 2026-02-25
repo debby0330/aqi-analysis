@@ -14,6 +14,8 @@ from datetime import datetime
 import json
 from geopy.distance import geodesic
 import csv
+import math
+from pyproj import Transformer
 
 # 載入環境變數
 load_dotenv()
@@ -26,7 +28,8 @@ class AQIMapGenerator:
         
         self.api_url = "https://data.moenv.gov.tw/api/v2/aqx_p_432"
         self.aqi_data = None
-        self.taipei_station = (25.0478, 121.5170)  # 台北車站座標
+        self.taipei_station_wgs84 = (25.0478, 121.5170)  # 台北車站 WGS84 坐標
+        self.taipei_station_twd97 = self.wgs84_to_twd97(*self.taipei_station_wgs84)  # 轉換為 TWD97
         
     def fetch_aqi_data(self):
         """獲取環境部 AQI 數據"""
@@ -89,13 +92,36 @@ class AQIMapGenerator:
         else:
             return '不健康'
     
-    def calculate_distance_to_taipei(self, lat, lon):
-        """計算測站到台北車站的距離（公里）"""
+    def wgs84_to_twd97(self, lat, lon):
+        """將 WGS84 坐標轉換為 TWD97 坐標"""
         try:
-            station_coords = (float(lat), float(lon))
-            distance = geodesic(station_coords, self.taipei_station).kilometers
-            return round(distance, 2)
-        except (ValueError, TypeError):
+            # 定義坐標轉換器：WGS84 (EPSG:4326) -> TWD97 (EPSG:3826)
+            transformer = Transformer.from_crs("EPSG:4326", "EPSG:3826")
+            x, y = transformer.transform(lat, lon)  # 注意順序：先緯度，後經度
+            return (x, y)  # 返回 (x, y) 坐標（公尺）
+        except Exception as e:
+            print(f"坐標轉換錯誤: {e}")
+            return None
+    
+    def calculate_distance_twd97(self, lat, lon):
+        """使用 TWD97 坐標系統計算到台北車站的距離（公里）"""
+        try:
+            # 將測站 WGS84 坐標轉換為 TWD97
+            station_twd97 = self.wgs84_to_twd97(lat, lon)
+            if station_twd97 is None:
+                return None
+            
+            # 使用歐幾里得距離公式計算平面距離
+            distance_meters = math.sqrt(
+                (station_twd97[0] - self.taipei_station_twd97[0])**2 + 
+                (station_twd97[1] - self.taipei_station_twd97[1])**2
+            )
+            
+            # 轉換為公里並四捨五入
+            distance_km = distance_meters / 1000
+            return round(distance_km, 2)
+        except Exception as e:
+            print(f"距離計算錯誤: {e}")
             return None
     
     def export_to_csv(self, filename=None):
@@ -118,7 +144,7 @@ class AQIMapGenerator:
                 try:
                     lat = station.get('latitude', 0)
                     lon = station.get('longitude', 0)
-                    distance = self.calculate_distance_to_taipei(lat, lon)
+                    distance = self.calculate_distance_twd97(lat, lon)  # 使用 TWD97 計算距離
                     
                     csv_data.append({
                         '測站名稱': station.get('sitename', '未知測站'),
@@ -129,7 +155,7 @@ class AQIMapGenerator:
                         '主要污染物': station.get('pollutant', 'N/A'),
                         '緯度': lat,
                         '經度': lon,
-                        '距離台北車站(公里)': distance,
+                        '距離台北車站(公里)': distance,  # TWD97 計算的距離
                         '更新時間': station.get('publishtime', 'N/A')
                     })
                 except Exception as e:
