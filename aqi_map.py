@@ -29,7 +29,7 @@ class AQIMapGenerator:
         self.api_url = "https://data.moenv.gov.tw/api/v2/aqx_p_432"
         self.aqi_data = None
         self.taipei_station_wgs84 = (25.0478, 121.5170)  # 台北車站 WGS84 坐標
-        self.taipei_station_twd97 = self.wgs84_to_twd97(*self.taipei_station_wgs84)  # 轉換為 TWD97
+        # 延遲轉換台北車站坐標，避免在初始化時調用未定義的方法
         
     def fetch_aqi_data(self):
         """獲取環境部 AQI 數據"""
@@ -106,6 +106,10 @@ class AQIMapGenerator:
     def calculate_distance_twd97(self, lat, lon):
         """使用 TWD97 坐標系統計算到台北車站的距離（公里）"""
         try:
+            # 延遲初始化台北車站 TWD97 坐標
+            if not hasattr(self, 'taipei_station_twd97'):
+                self.taipei_station_twd97 = self.wgs84_to_twd97(*self.taipei_station_wgs84)
+            
             # 將測站 WGS84 坐標轉換為 TWD97
             station_twd97 = self.wgs84_to_twd97(lat, lon)
             if station_twd97 is None:
